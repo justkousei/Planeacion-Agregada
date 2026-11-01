@@ -254,6 +254,7 @@ def datos_articulo():
 # ║  CELDA 2 · INTERFAZ GRÁFICA (ipywidgets)                             ║
 # ╚══════════════════════════════════════════════════════════════════════╝
 import ipywidgets as W
+from dataclasses import replace
 import matplotlib.pyplot as plt
 from IPython.display import display, HTML
 
@@ -265,13 +266,51 @@ def ES(x, dec=2):
     return f"{x:,.{dec}f}".replace(",", "§").replace(".", ",").replace("§", ".")
 
 
-def tabla_html(df, alto=450, dec=2):
-    d2 = df.copy()
-    for c in d2.columns:
-        if pd.api.types.is_numeric_dtype(d2[c]): d2[c] = d2[c].map(lambda v: ES(v, dec))
-    css = ("<style>.pa td,.pa th{padding:3px 10px;border-bottom:1px solid #8884;text-align:right}"
-           ".pa th{position:sticky;top:0;background:#8883}.pa td:first-child,.pa th:first-child{text-align:left}</style>")
-    return f"{css}<div style='max-height:{alto}px;overflow:auto'>{d2.to_html(index=False, classes='pa', border=0)}</div>"
+PAL = dict(total="#27ae60", prod="#2980b9", setup="#e67e22", mant="#8e44ad", falt="#e74c3c",
+           info="#16a085", gris="#7f8c8d")
+TIPO_COLOR = {"X": PAL["prod"], "I": PAL["mant"], "Y": PAL["setup"]}
+
+
+def rgba(hexc, a):
+    h = hexc.lstrip("#")
+    return f"rgba({int(h[0:2],16)},{int(h[2:4],16)},{int(h[4:6],16)},{a})"
+
+
+def seccion(titulo, color, cuerpo, icono=""):
+    """Tarjeta con encabezado de color (funciona en modo claro y oscuro)."""
+    return (f"<div style='border:1px solid {rgba(color,.55)};border-radius:12px;margin:12px 0;overflow:hidden'>"
+            f"<div style='background:{rgba(color,.9)};color:white;padding:8px 14px;font-weight:700;font-size:15px'>"
+            f"{icono} {titulo}</div><div style='padding:10px 14px'>{cuerpo}</div></div>")
+
+
+CSS_TABLA = ("<style>.pa{border-collapse:collapse;width:100%}.pa td,.pa th{padding:4px 12px;"
+             "border-bottom:1px solid #8883;text-align:right;white-space:nowrap}"
+             ".pa th{position:sticky;top:0;color:white;z-index:1}"
+             ".pa td:first-child,.pa th:first-child{text-align:left}"
+             ".pa tr:hover td{background:#8882}</style>")
+
+
+def tabla_html(df, alto=450, dec=2, color=None, calor=False, fila_color=None):
+    """Tabla HTML con encabezado de color. calor=True sombrea las celdas numéricas según su magnitud.
+       fila_color: función(fila)->color hex para pintar una barra a la izquierda de cada fila."""
+    color = color or PAL["prod"]
+    num = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
+    vmax = max([float(np.nanmax(np.abs(df[num].values))) if len(num) else 1.0, 1e-9])
+    h = "<table class='pa'><thead><tr>" + "".join(
+        f"<th style='background:{color}'>{c}</th>" for c in df.columns) + "</tr></thead><tbody>"
+    for _, fila in df.iterrows():
+        borde = f"border-left:5px solid {fila_color(fila)};" if fila_color else ""
+        h += "<tr>"
+        for n, c in enumerate(df.columns):
+            v = fila[c]; est = borde if n == 0 else ""
+            if c in num:
+                txt = ES(v, dec)
+                if calor and v == v and abs(v) > 1e-9: est += f"background:{rgba(color, .12 + .55*min(abs(v)/vmax,1))};"
+                elif abs(v) < 1e-9 if v == v else False: est += "opacity:.4;"
+            else: txt = str(v)
+            h += f"<td style='{est}'>{txt}</td>"
+        h += "</tr>"
+    return f"{CSS_TABLA}<div style='max-height:{alto}px;overflow:auto'>{h}</tbody></table></div>"
 
 
 class Grid:
@@ -302,7 +341,11 @@ w_T = W.IntText(value=4, description="Nº de períodos", **est)
 w_meses = W.FloatText(value=3, description="Meses por período", **est)
 w_efic = W.FloatText(value=0.8, description="Factor eficiencia", **est)
 w_falt = W.Checkbox(value=True, description="Permitir escasez (demanda pendiente)", indent=False)
-w_ent = W.Checkbox(value=True, description="Producción X entera", indent=False)
+w_modo = W.Dropdown(options=["Ambas (comparar)", "Entera (con aproximación)", "Continua (sin aproximación)"],
+                    value="Ambas (comparar)", description="Resolver", **est)
+w_ver = W.Dropdown(options=[("Con aproximación (X entera)", "ent"), ("Sin aproximación (X continua)", "cont")],
+                   value="ent", description="Ver solución:", style={"description_width": "100px"},
+                   layout=W.Layout(width="400px"))
 w_tl = W.IntText(value=60, description="Tiempo máx. (s)", **est)
 w_gap = W.FloatText(value=0.0, description="Gap tolerado (%)", **est)
 b_gen = W.Button(description="1 · Generar tablas", button_style="info", icon="table", layout=W.Layout(width="190px"))
@@ -368,7 +411,7 @@ def generar_tablas(_=None):
 def cargar_ejemplo(_=None):
     a = caso_articulo()
     w_prod.value, w_J.value, w_T.value = "Producto", ",".join(map(str, a["J"])), a["T"]
-    w_meses.value, w_efic.value, w_falt.value, w_ent.value = a["meses"], a["efic"], True, True
+    w_meses.value, w_efic.value, w_falt.value = a["meses"], a["efic"], True
     generar_tablas()
     g = S["g"]; src = sorted(a["fte"])
     g["dem"].set([[a["inv_ini"], a["inv_fin"], a["c_falt"]] + a["demanda"]])
@@ -391,7 +434,7 @@ def leer_datos():
               tasa={}, setup={}, costo={}, mantener={}, coef={},
               demanda={(p, t + 1): dem[p][3 + t] for p in range(P) for t in range(T)},
               inv_ini=list(dem[:, 0]), inv_fin=list(dem[:, 1]), c_falt=list(dem[:, 2]),
-              faltantes=w_falt.value, enteras=w_ent.value, t_limite=w_tl.value, gap=w_gap.value)
+              faltantes=w_falt.value, enteras=True, t_limite=w_tl.value, gap=w_gap.value)
     for p in range(P):
         for n, (i, j) in enumerate(src):
             r = p * len(src) + n
@@ -412,37 +455,71 @@ def pintar_tabla(_=None):
     elif f == "Inventarios (I)": t = t[t["Variable"].str.startswith("I")]
     elif f == "Preparaciones (Y)": t = t[t["Variable"].str.startswith("Y")]
     o_tab.clear_output()
-    with o_tab: display(HTML(tabla_html(t, 480)))
+    leyenda = ("<div style='margin-bottom:8px'>"
+               + "".join(f"<span style='border-left:5px solid {c};padding:2px 10px;margin-right:14px'>{n}</span>"
+                         for n, c in [("X · producción", PAL["prod"]), ("I · inventarios", PAL["mant"]),
+                                      ("Y · preparación", PAL["setup"])]) + "</div>")
+    with o_tab:
+        display(HTML(seccion(f"Tabla solución · {len(t)} variables", PAL["prod"], leyenda +
+                  tabla_html(t, 480, color=PAL["gris"],
+                             fila_color=lambda r: TIPO_COLOR.get(r["Variable"][0], PAL["gris"])), "📋")))
 
 
 w_filtro.observe(pintar_tabla, names="value")
 
 
-def kpi(titulo, valor):
-    return (f"<div style='border:1px solid #8886;border-radius:10px;padding:10px 16px;min-width:170px'>"
-            f"<div style='opacity:.7;font-size:12px'>{titulo}</div><div style='font-size:20px;font-weight:700'>{valor}</div></div>")
+def kpi(titulo, valor, color, sub=""):
+    sub = f"<div style='opacity:.75;font-size:12px'>{sub}</div>" if sub else ""
+    return (f"<div style='flex:1;min-width:170px;border-radius:12px;padding:12px 16px;"
+            f"background:{rgba(color,.16)};border-top:5px solid {color}'>"
+            f"<div style='opacity:.75;font-size:12px;text-transform:uppercase;letter-spacing:.5px'>{titulo}</div>"
+            f"<div style='font-size:21px;font-weight:800;color:{color}'>{valor}</div>{sub}</div>")
 
 
-def mostrar(R, d):
+def mostrar(R, d, etiqueta="", Rs=None):
     for o in (o_res, o_plan, o_graf, o_util): o.clear_output()
-    c = R["costos"]
+    c, tot = R["costos"], max(R["obj"], 1e-9)
+    pct = lambda v: f"{100*v/tot:.1f}% del total"
+    ok = R["estado"].startswith("Óptima")
     with o_res:
         display(HTML(
-            f"<div style='display:flex;gap:12px;flex-wrap:wrap;margin:8px 0'>"
-            + kpi("Estado", R["estado"]) + kpi("Costo total (F.O.)", "$ " + ES(R["obj"], 0))
-            + kpi("Producción", "$ " + ES(c["prod"], 0)) + kpi("Preparación (setup)", "$ " + ES(c["setup"], 0))
-            + kpi("Mantener inventario", "$ " + ES(c["mant"], 0)) + kpi("Escasez", "$ " + ES(c["falt"], 0))
-            + kpi("Tiempo solver", f"{R['seg']:.1f} s") + "</div>"))
+            "<div style='display:flex;gap:12px;flex-wrap:wrap;margin:6px 0'>"
+            + kpi("Costo total (F.O.)", "$ " + ES(R["obj"], 0), PAL["total"], "valor de la función objetivo")
+            + kpi("Estado", "✔ " + R["estado"] if ok else "⚠ " + R["estado"], PAL["total"] if ok else PAL["setup"],
+                  f"{etiqueta} · {R['seg']:.1f} s") + "</div>"
+            "<div style='display:flex;gap:12px;flex-wrap:wrap;margin:6px 0'>"
+            + kpi("Producción", "$ " + ES(c["prod"], 0), PAL["prod"], pct(c["prod"]))
+            + kpi("Preparación (setup)", "$ " + ES(c["setup"], 0), PAL["setup"], pct(c["setup"]))
+            + kpi("Mantener inventario", "$ " + ES(c["mant"], 0), PAL["mant"], pct(c["mant"]))
+            + kpi("Escasez", "$ " + ES(c["falt"], 0), PAL["falt"], pct(c["falt"])) + "</div>"))
+    if Rs and len(Rs) == 2:
+        A_, B_ = Rs["ent"], Rs["cont"]
+        filas = [("Costo total (F.O.)", A_["obj"], B_["obj"]), ("Producción", A_["costos"]["prod"], B_["costos"]["prod"]),
+                 ("Preparación (setup)", A_["costos"]["setup"], B_["costos"]["setup"]),
+                 ("Mantener inventario", A_["costos"]["mant"], B_["costos"]["mant"]),
+                 ("Escasez", A_["costos"]["falt"], B_["costos"]["falt"])]
+        dfc = pd.DataFrame([[n, a_, b_, a_ - b_] for n, a_, b_ in filas],
+                           columns=["Concepto", "Con aproximación (X entera)", "Sin aproximación (X continua)", "Diferencia"])
+        nota = ("<p style='opacity:.8;margin:8px 0 0'>Sin aproximación: X continua y capacidades exactas (cota inferior). "
+                "Con aproximación: X entera y capacidad redondeada hacia abajo, que es lo que se puede producir en la práctica. "
+                f"La diferencia en el costo total es de $ {ES(A_['obj'] - B_['obj'], 2)} "
+                f"({ES(100 * (A_['obj'] - B_['obj']) / max(B_['obj'], 1e-9), 6)} %).</p>")
+        with o_res:
+            display(HTML(seccion("Comparación: con vs sin aproximaciones", PAL["info"],
+                                 tabla_html(dfc, 300, 2, PAL["info"]) + nota, "⚖️")))
     pintar_tabla()
     T = d.T
     with o_plan:
         for nombre in d.productos:
-            display(HTML(f"<h4>{nombre} · Producción por fuente (unidades)</h4>"))
             df = R["plan"][nombre].reset_index().rename(columns={"index": "Fuente"})
-            display(HTML(tabla_html(df, 400, 0)))
-            display(HTML(f"<h4>{nombre} · Inventarios y cumplimiento de demanda</h4>"))
+            display(HTML(seccion(f"{nombre} · Producción por fuente (unidades)", PAL["prod"],
+                                 tabla_html(df, 380, 0, PAL["prod"], calor=True), "🏭")))
             df = R["inv"][nombre].reset_index().rename(columns={"index": ""})
-            display(HTML(tabla_html(df, 400, 0)))
+            display(HTML(seccion(f"{nombre} · Inventarios y cumplimiento de demanda", PAL["mant"],
+                                 tabla_html(df, 380, 0, PAL["mant"], calor=True), "📦")))
+    plt.rcParams.update({"axes.spines.top": False, "axes.spines.right": False, "axes.grid": True,
+                         "grid.alpha": .25, "axes.axisbelow": True})
+    ciclo = ["#2980b9", "#e67e22", "#8e44ad", "#16a085", "#e74c3c", "#f1c40f", "#34495e"]
     with o_graf:
         cols = list(R["plan"][d.productos[0]].columns); x = np.arange(T); M = len(d.J)
         for nombre in d.productos:
@@ -452,47 +529,75 @@ def mostrar(R, d):
                 ax = axs[(i - 1) // nc][(i - 1) % nc]; base = np.zeros(T)
                 for j in range(1, d.J[i - 1] + 1):
                     v = R["plan"][nombre].loc[f"Etapa {i} · Fuente {j}"].values.astype(float)
-                    ax.bar(x, v, bottom=base, label=f"F{j}"); base += v
-                ax.set_title(f"Etapa {i}"); ax.set_xticks(x); ax.set_xticklabels(cols); ax.legend(fontsize=7)
+                    ax.bar(x, v, bottom=base, label=f"F{j}", color=ciclo[(j - 1) % len(ciclo)]); base += v
+                ax.set_title(f"Etapa {i}", fontweight="bold"); ax.set_xticks(x); ax.set_xticklabels(cols)
+                ax.legend(fontsize=7)
             for k in range(M, nr * nc): axs[k // nc][k % nc].axis("off")
-            fig.suptitle(f"{nombre}: producción por etapa y fuente"); fig.tight_layout(); plt.show()
+            fig.suptitle(f"{nombre}: producción por etapa y fuente", fontweight="bold"); fig.tight_layout(); plt.show()
             inv = R["inv"][nombre]
-            fig, ax = plt.subplots(figsize=(7, 3.5))
-            ax.bar(x - 0.2, inv.loc["Demanda"], 0.4, label="Demanda")
-            ax.bar(x + 0.2, inv.loc[f"Producción etapa {M}"], 0.4, label="Producción final")
-            ax.plot(x, inv.loc["Inv. prod. terminado (I+)"], "o-", label="Inventario I+")
-            ax.plot(x, inv.loc["Demanda pendiente (I-)"], "s--", label="Pendiente I-")
-            ax.set_xticks(x); ax.set_xticklabels(cols); ax.set_title(f"{nombre}: demanda vs producción"); ax.legend(fontsize=8)
-            fig.tight_layout(); plt.show()
-        fig, ax = plt.subplots(figsize=(5, 3.2))
-        ax.bar(["Producción", "Setup", "Mantener", "Escasez"], [c["prod"], c["setup"], c["mant"], c["falt"]])
-        ax.set_title("Desglose del costo total"); fig.tight_layout(); plt.show()
+            fig, ax = plt.subplots(figsize=(7.5, 3.6))
+            ax.bar(x - 0.2, inv.loc["Demanda"], 0.4, label="Demanda", color=PAL["gris"])
+            ax.bar(x + 0.2, inv.loc[f"Producción etapa {M}"], 0.4, label="Producción final", color=PAL["prod"])
+            ax.plot(x, inv.loc["Inv. prod. terminado (I+)"], "o-", label="Inventario I+", color=PAL["mant"], lw=2)
+            ax.plot(x, inv.loc["Demanda pendiente (I-)"], "s--", label="Pendiente I-", color=PAL["falt"], lw=2)
+            ax.set_xticks(x); ax.set_xticklabels(cols); ax.legend(fontsize=8)
+            ax.set_title(f"{nombre}: demanda vs producción", fontweight="bold"); fig.tight_layout(); plt.show()
+        fig, ax = plt.subplots(figsize=(6, 3.4))
+        nombres = ["Producción", "Setup", "Mantener", "Escasez"]; vals = [c["prod"], c["setup"], c["mant"], c["falt"]]
+        bars = ax.bar(nombres, vals, color=[PAL["prod"], PAL["setup"], PAL["mant"], PAL["falt"]])
+        for bb, v in zip(bars, vals): ax.text(bb.get_x() + bb.get_width() / 2, v, ES(v, 0), ha="center", va="bottom", fontsize=8)
+        ax.set_title("Desglose del costo total", fontweight="bold"); fig.tight_layout(); plt.show()
     with o_util:
         U = R["util"]
         fig, ax = plt.subplots(figsize=(1.2 * T + 3, 0.45 * len(U) + 1.5))
-        im = ax.imshow(U.values, aspect="auto", cmap="YlOrRd", vmin=0, vmax=1)
+        im = ax.imshow(U.values, aspect="auto", cmap="RdYlGn_r", vmin=0, vmax=1)
+        ax.grid(False)
         ax.set_xticks(range(T)); ax.set_xticklabels(U.columns); ax.set_yticks(range(len(U))); ax.set_yticklabels(U.index)
-        for a in range(U.shape[0]):
-            for b in range(U.shape[1]): ax.text(b, a, f"{U.values[a][b]*100:.0f}%", ha="center", va="center", fontsize=8)
-        fig.colorbar(im); ax.set_title("Utilización de la capacidad (horas usadas / disponibles)")
+        for a_ in range(U.shape[0]):
+            for b_ in range(U.shape[1]): ax.text(b_, a_, f"{U.values[a_][b_]*100:.0f}%", ha="center", va="center", fontsize=8)
+        fig.colorbar(im); ax.set_title("Utilización de la capacidad (horas usadas / disponibles)", fontweight="bold")
         fig.tight_layout(); plt.show()
+
+
+ETIQ = {"ent": "Con aproximación (X entera)", "cont": "Sin aproximación (X continua)"}
+
+
+def _pintar_version(_=None):
+    if S.get("mute") or not S.get("Rs"): return
+    k = w_ver.value
+    if k not in S["Rs"]: return
+    S["R"] = S["Rs"][k]
+    mostrar(S["R"], S["d"], ETIQ[k], S["Rs"])
+
+
+w_ver.observe(_pintar_version, names="value")
 
 
 def resolver_click(_=None):
     try: d = leer_datos()
     except Exception as e: aviso(str(e)); return
-    aviso("Resolviendo… (puede tardar hasta el tiempo máximo configurado)", "#2980b9")
+    modo = w_modo.value
+    corridas = (["ent"] if modo[0] in "AE" else []) + (["cont"] if modo[0] in "AC" else [])
+    aviso("Resolviendo… (puede tardar hasta el tiempo máximo configurado por corrida)", "#2980b9")
     b_res.disabled = True
+    Rs = {}
     try:
-        R = resolver(d)
+        for k in corridas:
+            Rs[k] = resolver(replace(d, enteras=(k == "ent")))
     except Exception as e:
         aviso(f"Error al resolver: {e}"); b_res.disabled = False; return
     b_res.disabled = False
-    if not R["ok"]:
-        aviso(R["estado"]); return
-    S["R"], S["d"] = R, d
-    aviso(f"{R['estado']} · costo total = $ {ES(R['obj'], 0)}", "#27ae60")
-    mostrar(R, d)
+    for k, R in Rs.items():
+        if not R["ok"]:
+            aviso(f"{ETIQ[k]}: {R['estado']}"); return
+    S["Rs"], S["d"] = Rs, d
+    k = "ent" if "ent" in Rs else "cont"
+    S["mute"] = True; w_ver.value = k; S["mute"] = False
+    w_ver.disabled = len(Rs) < 2
+    S["R"] = Rs[k]
+    txt = " · ".join(f"{ETIQ[q]}: $ {ES(Rs[q]['obj'], 2)}" for q in Rs)
+    aviso(f"{Rs[k]['estado']} · {txt}", "#27ae60")
+    mostrar(Rs[k], d, ETIQ[k], Rs)
 
 
 def exportar(_=None):
@@ -519,7 +624,7 @@ ui = W.VBox([
     W.HTML("<h2>🏭 Planeación agregada · multietapa · multifuente · multiproducto</h2>"
            "<p style='opacity:.8'>Modelo MILP (Kalenatic, López, González) generalizado. Cambia la estructura y pulsa "
            "<b>Generar tablas</b>.</p>"),
-    W.HBox([W.VBox([w_prod, w_J, w_T, w_meses]), W.VBox([w_efic, w_tl, w_gap, w_falt, w_ent])]),
-    W.HBox([b_gen, b_ej]), msg, caja_tablas, W.HBox([b_res, b_xls]), res_tabs])
+    W.HBox([W.VBox([w_prod, w_J, w_T, w_meses]), W.VBox([w_efic, w_tl, w_gap, w_modo, w_falt])]),
+    W.HBox([b_gen, b_ej]), msg, caja_tablas, W.HBox([b_res, b_xls]), w_ver, res_tabs])
 display(ui)
 generar_tablas()
