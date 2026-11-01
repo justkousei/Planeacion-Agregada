@@ -139,7 +139,7 @@ def resolver(d: Datos):
         msg = ESTADOS.get(res.status, res.message)
         if res.status == 2:
             msg += (" → no hay forma de cumplir la demanda con las capacidades dadas. "
-                    "Sube máquinas/turnos/días, baja la demanda, o activa 'permitir escasez'.")
+                    "Subir máquinas, turnos o días, bajar la demanda, o activar 'permitir escasez'.")
         return {"ok": False, "estado": msg, "seg": seg}
 
     x = res.x.copy()
@@ -280,7 +280,7 @@ def seccion(titulo, color, cuerpo, icono=""):
     """Tarjeta con encabezado de color (funciona en modo claro y oscuro)."""
     return (f"<div style='border:1px solid {rgba(color,.55)};border-radius:12px;margin:12px 0;overflow:hidden'>"
             f"<div style='background:{rgba(color,.9)};color:white;padding:8px 14px;font-weight:700;font-size:15px'>"
-            f"{icono} {titulo}</div><div style='padding:10px 14px'>{cuerpo}</div></div>")
+            f"{(icono + " " + titulo).strip()}</div><div style='padding:10px 14px'>{cuerpo}</div></div>")
 
 
 CSS_TABLA = ("<style>.pa{border-collapse:collapse;width:100%}.pa td,.pa th{padding:4px 12px;"
@@ -326,7 +326,7 @@ def ayuda(titulo, color, que_es, campos=(), consejo=""):
     """Caja explicativa: qué es la tabla, qué significa cada columna y un consejo."""
     li = "".join(f"<li style='margin:3px 0'><b>{n}:</b> {d}</li>" for n, d in campos)
     lista = f"<ul style='margin:6px 0 6px 18px;padding:0'>{li}</ul>" if li else ""
-    tip = (f"<div style='margin-top:6px'>💡 <i>{consejo}</i></div>" if consejo else "")
+    tip = (f"<div style='margin-top:6px'><i>{consejo}</i></div>" if consejo else "")
     return W.HTML(f"<div style='border-left:6px solid {color};background:{rgba(color, .13)};padding:10px 16px;"
                   f"border-radius:8px;margin:6px 0 12px 0;max-width:1000px'>"
                   f"<div style='font-weight:800;font-size:15px;color:{color}'>{titulo}</div>"
@@ -382,21 +382,21 @@ w_ver = W.Dropdown(options=[("Con aproximación (X entera)", "ent"), ("Sin aprox
                    value="ent", description="Ver solución:", style={"description_width": "110px"},
                    layout=W.Layout(width="420px"))
 b_gen = W.Button(description="Paso 2 · Generar tablas", button_style="info", icon="table",
-                 tooltip="Crea las tablas de datos según la estructura de arriba", layout=W.Layout(width="230px", height="40px"))
+                 tooltip="Crear las tablas de datos según la estructura de arriba", layout=W.Layout(width="230px", height="40px"))
 b_ej = W.Button(description="Cargar caso del artículo", icon="book", button_style="warning",
-                tooltip="Rellena todo con el ejemplo del paper (4 etapas, 12 fuentes, 4 trimestres)",
+                tooltip="Rellenar todo con el ejemplo del paper (4 etapas, 12 fuentes, 4 trimestres)",
                 layout=W.Layout(width="230px", height="40px"))
 b_res = W.Button(description="Paso 4 · RESOLVER", button_style="success", icon="play",
-                 tooltip="Calcula el plan óptimo", layout=W.Layout(width="230px", height="44px"))
+                 tooltip="Calcular el plan óptimo", layout=W.Layout(width="230px", height="44px"))
 b_xls = W.Button(description="Descargar Excel", icon="download", layout=W.Layout(width="190px", height="44px"))
 msg = W.HTML("")
 w_vista = W.HTML("")
 caja_tablas = W.VBox([])
-o_res, o_tab, o_plan, o_graf, o_util = (W.Output() for _ in range(5))
+o_res, o_tab, o_plan, o_grafo, o_graf, o_util = (W.Output() for _ in range(6))
 w_filtro = W.Dropdown(options=["Todas", "Solo valor ≠ 0", "Producción (X)", "Inventarios (I)", "Preparaciones (Y)"],
                       value="Solo valor ≠ 0", description="Mostrar:")
-res_tabs = W.Tab(children=[o_res, W.VBox([w_filtro, o_tab]), o_plan, o_graf, o_util])
-for k, t in enumerate(["📊 Resumen", "📋 Tabla solución", "🏭 Plan por etapa", "📈 Gráficas", "🔥 Utilización"]):
+res_tabs = W.Tab(children=[o_res, W.VBox([w_filtro, o_tab]), o_plan, o_grafo, o_graf, o_util])
+for k, t in enumerate(["Resumen", "Tabla solución", "Plan por etapa", "Grafo", "Gráficas", "Utilización"]):
     res_tabs.set_title(k, t)
 
 
@@ -416,7 +416,7 @@ def leer_estructura():
     try: J = [int(s) for s in w_J.value.replace(";", ",").split(",") if s.strip()]
     except ValueError: raise ValueError("'Fuentes por etapa' debe tener solo números separados por coma. Ejemplo: 3,2,3,4")
     T = int(w_T.value)
-    if not prods: raise ValueError("Escribe al menos un producto.")
+    if not prods: raise ValueError("Debe haber al menos un producto.")
     if not J or min(J) < 1: raise ValueError("Cada etapa necesita al menos 1 fuente. Ejemplo: 3,2,3,4")
     if T < 1: raise ValueError("Debe haber al menos 1 período.")
     return prods, J, T
@@ -425,14 +425,14 @@ def leer_estructura():
 def actualizar_vista(_=None):
     try: prods, J, T = leer_estructura()
     except Exception as e:
-        w_vista.value = f"<div style='color:#c0392b'><b>⚠ {e}</b></div>"; return
+        w_vista.value = f"<div style='color:#c0392b'><b>{e}</b></div>"; return
     M = len(J)
-    flujo = " <b>➜</b> ".join(_etq(f"Etapa {i} · {n} fuente{'s' if n > 1 else ''}", COL_T["cap"]) for i, n in enumerate(J, 1))
+    flujo = " <b>→</b> ".join(_etq(f"Etapa {i} · {n} fuente{'s' if n > 1 else ''}", COL_T["cap"]) for i, n in enumerate(J, 1))
     w_vista.value = (
         f"<div style='border:2px dashed #8886;border-radius:10px;padding:10px 14px;max-width:1000px'>"
-        f"<b>Así quedará tu problema:</b><div style='margin-top:6px'>Productos: "
+        f"<b>Estructura resultante:</b><div style='margin-top:6px'>Productos: "
         + "".join(_etq(p, COL_T["dem"]) for p in prods) + "</div>"
-        f"<div style='margin-top:6px'>Proceso: {flujo} <b>➜</b> {_etq('📦 Producto terminado', '#27ae60')}</div>"
+        f"<div style='margin-top:6px'>Proceso: {flujo} <b>→</b> {_etq('Producto terminado', '#27ae60')}</div>"
         f"<div style='margin-top:6px'>Períodos: " + "".join(_etq(f"T{t}", COL_T["etp"]) for t in range(1, T + 1)) + "</div>"
         f"<div style='margin-top:6px;opacity:.85'>= {len(prods)} producto(s) · {M} etapa(s) · {sum(J)} fuente(s) en total · {T} período(s)</div></div>")
 
@@ -463,17 +463,17 @@ def generar_tablas(_=None):
     S["g"], S["est"] = g, (prods, J, T)
     H = lambda *a, **k: ayuda(*a, **k)
     tabs = W.Tab(children=[
-        W.VBox([H("📘 Tabla 1 · Demanda e inventarios", COL_T["dem"],
-                  "Aquí le dices al modelo <b>cuánto necesitas entregar</b> de cada producto y cómo empiezas y terminas la bodega. "
+        W.VBox([H("Tabla 1 · Demanda e inventarios", COL_T["dem"],
+                  "Datos de lo que hay que <b>entregar</b> de cada producto y del estado de la bodega al empezar y al terminar el plan. "
                   "Una fila por producto.",
-                  [("Inv. inicial", "unidades de producto terminado que ya tienes en bodega al empezar el período 1."),
-                   ("Inv. final", "unidades que quieres que sobren en bodega al terminar el último período."),
-                   ("Costo escasez", "lo que te cuesta cada unidad que se queda sin entregar a tiempo (demanda pendiente). "
+                  [("Inv. inicial", "unidades de producto terminado que ya hay en bodega al empezar el período 1."),
+                   ("Inv. final", "unidades que deben quedar en bodega al terminar el último período."),
+                   ("Costo escasez", "lo que cuesta cada unidad que se queda sin entregar a tiempo (demanda pendiente). "
                                      "Si es muy bajo, al modelo le puede salir más barato dejar de entregar que producir."),
                    ("Demanda Tn", "unidades que piden los clientes en el período n.")],
-                  "Si desmarcas 'permitir escasez' arriba, el modelo estará obligado a cumplir TODA la demanda."), g["dem"].box]),
-        W.VBox([H("📗 Tabla 2 · Capacidad de las máquinas", COL_T["cap"],
-                  "Define <b>cuánto tiempo puede trabajar</b> cada fuente. Una <b>etapa</b> es un paso del proceso (la 1 es la "
+                  "Si se desmarca 'permitir escasez' en la estructura, el modelo está obligado a cumplir toda la demanda."), g["dem"].box]),
+        W.VBox([H("Tabla 2 · Capacidad de las máquinas", COL_T["cap"],
+                  "Tiempo que <b>puede trabajar</b> cada fuente. Una <b>etapa</b> es un paso del proceso (la 1 es la "
                   "primera, la última entrega el producto terminado). Una <b>fuente</b> es una máquina o grupo de máquinas que puede "
                   "hacer ese paso: el modelo decide cuál usar.",
                   [("Días hábiles", "días que se trabaja en cada período (arriba, una sola fila para todo el sistema)."),
@@ -483,20 +483,20 @@ def generar_tablas(_=None):
                   "Horas disponibles = máquinas × eficiencia × (días × turnos × horas por turno − pérdida × meses del período). "
                   "Si hay varios productos, comparten estas horas."),
             g["dias"].box, W.HTML("<div style='height:14px'></div>"), g["fte"].box]),
-        W.VBox([H("📙 Tabla 3 · Velocidad y preparación", COL_T["tasa"],
+        W.VBox([H("Tabla 3 · Velocidad y preparación", COL_T["tasa"],
                   "Una fila por <b>producto y fuente</b>: qué tan rápido produce y cuánto cuesta arrancar.",
-                  [("Tasa de producción", "unidades por hora que saca UNA máquina de esa fuente. Pon <b>0</b> si esa fuente no puede "
+                  [("Tasa de producción", "unidades por hora que saca UNA máquina de esa fuente. Poner <b>0</b> si esa fuente no puede "
                                           "hacer ese producto."),
                    ("Costo de preparación (setup)", "costo fijo de poner a trabajar esa fuente en un período. Se paga una vez si "
                                                     "produce algo, sin importar cuánto.")],
                   "Por el costo de preparación, al modelo le conviene concentrar la producción en pocas fuentes y períodos."),
             g["tasa"].box]),
-        W.VBox([H("📕 Tabla 4 · Costo de producir", COL_T["costo"],
+        W.VBox([H("Tabla 4 · Costo de producir", COL_T["costo"],
                   "Cuánto cuesta producir <b>una unidad</b> en cada fuente, período por período (materiales, mano de obra, energía...).",
                   [("T1, T2, ...", "costo unitario en ese período. Puede cambiar entre períodos.")],
                   "Una fuente más barata no siempre gana: depende también de su capacidad y de su costo de preparación."),
             g["costo"].box]),
-        W.VBox([H("📒 Tabla 5 · Inventarios entre etapas", COL_T["etp"],
+        W.VBox([H("Tabla 5 · Inventarios entre etapas", COL_T["etp"],
                   "Qué cuesta guardar piezas en la bodega de cada etapa y cuánto material de una etapa se gasta en la siguiente.",
                   [("Costo de mantener", "costo de guardar 1 unidad de esa etapa durante un período."),
                    ("Consumo por unidad", "unidades de esta etapa que se necesitan para hacer 1 unidad de la etapa siguiente "
@@ -506,11 +506,11 @@ def generar_tablas(_=None):
     for k, t in enumerate(["1 · Demanda", "2 · Capacidad", "3 · Velocidad y setup", "4 · Costos", "5 · Inventarios"]):
         tabs.set_title(k, t)
     caja_tablas.children = [W.HTML(
-        "<div style='font-size:18px;font-weight:800;margin-top:10px'>✏️ Paso 3 · Edita los datos</div>"
-        "<div style='opacity:.85;max-width:1000px'>Recorre las 5 pestañas de izquierda a derecha. Los números que aparecen son "
-        "<b>valores de ejemplo</b>: cámbialos por los de tu problema. Cada pestaña explica qué es cada dato.</div>"), tabs]
+        "<div style='font-size:18px;font-weight:800;margin-top:10px'>Paso 3 · Editar los datos</div>"
+        "<div style='opacity:.85;max-width:1000px'>Recorrer las 5 pestañas de izquierda a derecha. Los números que aparecen son "
+        "<b>valores de ejemplo</b> y hay que reemplazarlos por los del problema. Cada pestaña explica qué es cada dato.</div>"), tabs]
     aviso(f"Tablas generadas: {P} producto(s), {M} etapas, {sum(J)} fuentes, {T} períodos. "
-          f"Ahora edita los datos y pulsa RESOLVER.", "#27ae60")
+          f"Ahora se pueden editar los datos y pulsar RESOLVER.", "#27ae60")
 
 
 def cargar_ejemplo(_=None):
@@ -525,12 +525,12 @@ def cargar_ejemplo(_=None):
     g["tasa"].set([[a["rate"][k], a["setup"][k]] for k in src])
     g["costo"].set([a["cu"][k] for k in src])
     g["etp"].set([[h, 1] for h in a["mantener"]])
-    aviso("Caso del artículo cargado (4 etapas, 12 fuentes, 4 trimestres). Pulsa RESOLVER: el costo esperado es ≈ 34.208.760.",
+    aviso("Caso del artículo cargado (4 etapas, 12 fuentes, 4 trimestres). Se puede pulsar RESOLVER: el costo esperado es ≈ 34.208.760.",
           "#27ae60")
 
 
 def leer_datos():
-    if S["est"] is None: raise ValueError("Primero pulsa 'Generar tablas'.")
+    if S["est"] is None: raise ValueError("Primero hay que pulsar 'Generar tablas'.")
     prods, J, T = S["est"]; g = S["g"]; M = len(J); P = len(prods)
     src = [(i, j) for i in range(1, M + 1) for j in range(1, J[i - 1] + 1)]
     dem, dias, fte = g["dem"].get(), g["dias"].get()[0], g["fte"].get()
@@ -575,7 +575,7 @@ def pintar_tabla(_=None):
                                       ("Y · preparación", PAL["setup"])]) + "</div>")
     with o_tab:
         M_ = len(S["d"].J) if S.get("d") else 1
-        guia = caja("📖 Cómo leer esta tabla", PAL["prod"],
+        guia = caja("Cómo leer esta tabla", PAL["prod"],
                     "<b>Nombres:</b> <b>X123</b> = unidades producidas en la <b>etapa 1</b>, <b>fuente 2</b>, <b>período 3</b> · "
                     "<b>Y123</b> = 1 si esa fuente se prepara (se usa) en ese período, 0 si no · "
                     "<b>I12</b> = inventario de la etapa 1 al final del período 2 · "
@@ -586,7 +586,7 @@ def pintar_tabla(_=None):
                     "<i>Estado base</i>: 'Básica' = variable activa del plan; 'En cota' = en su límite (0 o capacidad máxima).")
         display(HTML(seccion(f"Tabla solución · {len(t)} variables", PAL["prod"], guia + leyenda +
                   tabla_html(t, 480, color=PAL["gris"],
-                             fila_color=lambda r: TIPO_COLOR.get(r["Variable"][0], PAL["gris"])), "📋")))
+                             fila_color=lambda r: TIPO_COLOR.get(r["Variable"][0], PAL["gris"])), "")))
 
 
 w_filtro.observe(pintar_tabla, names="value")
@@ -606,7 +606,7 @@ def kpi(titulo, valor, color, sub=""):
 
 
 def mostrar(R, d, etiqueta="", Rs=None):
-    for o in (o_res, o_plan, o_graf, o_util): o.clear_output()
+    for o in (o_res, o_plan, o_grafo, o_graf, o_util): o.clear_output()
     c, tot = R["costos"], max(R["obj"], 1e-9)
     pct = lambda v: f"{100*v/tot:.1f}% del total"
     ok = R["estado"].startswith("Óptima")
@@ -614,7 +614,7 @@ def mostrar(R, d, etiqueta="", Rs=None):
         display(HTML(
             "<div style='display:flex;gap:12px;flex-wrap:wrap;margin:6px 0'>"
             + kpi("Costo total (F.O.)", "$ " + ES(R["obj"], 0), PAL["total"], "valor de la función objetivo")
-            + kpi("Estado", "✔ " + R["estado"] if ok else "⚠ " + R["estado"], PAL["total"] if ok else PAL["setup"],
+            + kpi("Estado", R["estado"], PAL["total"] if ok else PAL["setup"],
                   f"{etiqueta} · {R['seg']:.1f} s") + "</div>"
             "<div style='display:flex;gap:12px;flex-wrap:wrap;margin:6px 0'>"
             + kpi("Producción", "$ " + ES(c["prod"], 0), PAL["prod"], pct(c["prod"]))
@@ -622,11 +622,11 @@ def mostrar(R, d, etiqueta="", Rs=None):
             + kpi("Mantener inventario", "$ " + ES(c["mant"], 0), PAL["mant"], pct(c["mant"]))
             + kpi("Escasez", "$ " + ES(c["falt"], 0), PAL["falt"], pct(c["falt"])) + "</div>"))
     with o_res:
-        display(HTML(caja("📖 Cómo leer el resumen", PAL["total"],
+        display(HTML(caja("Cómo leer el resumen", PAL["total"],
                           "El <b>costo total</b> es lo mínimo que cuesta cumplir la demanda con las máquinas disponibles. Se reparte en: "
                           "<b>producción</b> (costo por unidad fabricada), <b>preparación</b> (costo fijo de arrancar cada fuente), "
                           "<b>mantener inventario</b> (guardar unidades) y <b>escasez</b> (demanda que no se entrega a tiempo). "
-                          "Si 'Estado' dice <b>INFACTIBLE</b>, la capacidad no alcanza: sube máquinas/turnos/días o permite escasez.")))
+                          "Si 'Estado' dice <b>INFACTIBLE</b>, la capacidad no alcanza: subir máquinas, turnos o días, o permitir escasez.")))
     if Rs and len(Rs) == 2:
         A_, B_ = Rs["ent"], Rs["cont"]
         filas = [("Costo total (F.O.)", A_["obj"], B_["obj"]), ("Producción", A_["costos"]["prod"], B_["costos"]["prod"]),
@@ -641,11 +641,11 @@ def mostrar(R, d, etiqueta="", Rs=None):
                 f"({ES(100 * (A_['obj'] - B_['obj']) / max(B_['obj'], 1e-9), 6)} %).</p>")
         with o_res:
             display(HTML(seccion("Comparación: con vs sin aproximaciones", PAL["info"],
-                                 tabla_html(dfc, 300, 2, PAL["info"]) + nota, "⚖️")))
+                                 tabla_html(dfc, 300, 2, PAL["info"]) + nota, "")))
     pintar_tabla()
     T = d.T
     with o_plan:
-        display(HTML(caja("📖 Cómo leer estas tablas", PAL["prod"],
+        display(HTML(caja("Cómo leer estas tablas", PAL["prod"],
                           "Cada fila es una fuente (máquina) y cada columna un período. El número es cuántas unidades produce; "
                           "<b>cuanto más oscuro, más produce</b> y una celda atenuada con 0 significa que esa fuente no trabaja ese período. "
                           "En la tabla de inventarios: <b>Demanda</b> es lo que piden los clientes, <b>Inventario etapa i</b> son piezas guardadas "
@@ -653,10 +653,14 @@ def mostrar(R, d, etiqueta="", Rs=None):
         for nombre in d.productos:
             df = R["plan"][nombre].reset_index().rename(columns={"index": "Fuente"})
             display(HTML(seccion(f"{nombre} · Producción por fuente (unidades)", PAL["prod"],
-                                 tabla_html(df, 380, 0, PAL["prod"], calor=True), "🏭")))
+                                 tabla_html(df, 380, 0, PAL["prod"], calor=True), "")))
             df = R["inv"][nombre].reset_index().rename(columns={"index": ""})
             display(HTML(seccion(f"{nombre} · Inventarios y cumplimiento de demanda", PAL["mant"],
-                                 tabla_html(df, 380, 0, PAL["mant"], calor=True), "📦")))
+                                 tabla_html(df, 380, 0, PAL["mant"], calor=True), "")))
+    with o_grafo:
+        display(HTML(caja("Cómo leer el grafo", PAL["mant"], TEXTO_GRAFO)))
+        for nombre in d.productos:
+            fig = figura_grafo(R, d, nombre, etiqueta); plt.show()
     plt.rcParams.update({"axes.spines.top": False, "axes.spines.right": False, "axes.grid": True,
                          "grid.alpha": .25, "axes.axisbelow": True})
     ciclo = ["#2980b9", "#e67e22", "#8e44ad", "#16a085", "#e74c3c", "#f1c40f", "#34495e"]
@@ -688,7 +692,7 @@ def mostrar(R, d, etiqueta="", Rs=None):
         for bb, v in zip(bars, vals): ax.text(bb.get_x() + bb.get_width() / 2, v, ES(v, 0), ha="center", va="bottom", fontsize=8)
         ax.set_title("Desglose del costo total", fontweight="bold"); fig.tight_layout(); plt.show()
     with o_util:
-        display(HTML(caja("📖 Cómo leer este mapa", PAL["setup"],
+        display(HTML(caja("Cómo leer este mapa", PAL["setup"],
                           "Muestra qué porcentaje de las horas disponibles de cada fuente usa el plan en cada período. "
                           "<b>Verde</b> = sobra capacidad. <b>Rojo (cerca de 100 %)</b> = cuello de botella: esa fuente no puede producir más, "
                           "y si la demanda crece habrá que agregar máquinas, turnos o días.")))
@@ -744,21 +748,294 @@ def resolver_click(_=None):
     mostrar(Rs[k], d, ETIQ[k], Rs)
 
 
+# ───────── grafo de la solución (red por etapas y períodos, como en el Excel del profesor)
+GR_COLORES = ["#2980b9", "#e67e22", "#16a085", "#8e44ad", "#c0392b", "#d4ac0d", "#34495e", "#27ae60"]
+
+
+def figura_grafo(R, d, nombre, etiqueta=""):
+    from matplotlib.patches import Circle, FancyArrowPatch
+    from matplotlib.lines import Line2D
+    M, T = len(d.J), d.T
+    p = d.productos.index(nombre)
+    plan, inv = R["plan"][nombre], R["inv"][nombre]
+    dx, dy = 5.2, 3.6
+    ancho_u, alto_u = T * dx + 8.0, M * dy + 6.5
+    fig, ax = plt.subplots(figsize=(max(9, 0.5 * ancho_u), 0.5 * alto_u + 1.0))
+    ax.set_xlim(-4.2, T * dx + 3.8); ax.set_ylim(-M * dy - 3.6, 1.6)
+    ax.set_aspect("equal"); ax.axis("off")
+    pos = lambda i, t: (t * dx, -i * dy)
+    vmax = max(float(plan.values.max()), 1.0)
+    nodos = {}
+    for i in range(0, M + 1):
+        for t in range(1, T + 1):
+            x, y = pos(i, t)
+            c = Circle((x, y), 0.62, fc="#ecf0f1" if i == 0 else "white", ec="#34495e", lw=1.6, zorder=3)
+            ax.add_patch(c); nodos[i, t] = c
+            ax.text(x, y, "Ent." if i == 0 else f"T{t}", ha="center", va="center", fontsize=8, fontweight="bold",
+                    zorder=4, color="#2c3e50")
+    for i in range(1, M + 1):
+        ax.text(-4.0, -i * dy, f"Etapa {i}\nJ = {', '.join(str(j) for j in range(1, d.J[i-1] + 1))} máquinas",
+                ha="left", va="center", fontsize=9, fontweight="bold")
+    ax.text(-4.0, 0, "Entrada", ha="left", va="center", fontsize=9, fontweight="bold")
+
+    def flecha(a, b, rad, color, lw, estilo="-", ps=None, pb=None, z=2):
+        f = FancyArrowPatch(a, b, connectionstyle=f"arc3,rad={rad}", arrowstyle="-|>", mutation_scale=11,
+                            color=color, lw=lw, linestyle=estilo, patchA=ps, patchB=pb, shrinkA=0, shrinkB=0, zorder=z)
+        ax.add_patch(f)
+
+    def etiqueta_(x, y, txt, color, blanco=True, fs=7.5):
+        ax.text(x, y, txt, ha="center", va="center", fontsize=fs, zorder=6, color="white" if blanco else "#2c3e50",
+                bbox=dict(boxstyle="round,pad=0.22", fc=color, ec="none"))
+
+    for i in range(1, M + 1):                                   # producción: flechas que bajan
+        J = d.J[i - 1]
+        rads = np.linspace(-0.85, 0.85, J) if J > 1 else [0.0]
+        for t in range(1, T + 1):
+            a, b = pos(i - 1, t), pos(i, t)
+            for j in range(1, J + 1):
+                v = float(plan.loc[f"Etapa {i} · Fuente {j}", f"T{t}"]); col = GR_COLORES[(j - 1) % len(GR_COLORES)]
+                if v > 1e-9:
+                    flecha(a, b, rads[j - 1], col, 1.2 + 2.6 * v / vmax, ps=nodos[i - 1, t], pb=nodos[i, t], z=2)
+                    etiqueta_((a[0] + b[0]) / 2 + 0.5 * rads[j - 1] * (b[1] - a[1]),
+                              (a[1] + b[1]) / 2 - 0.5 * rads[j - 1] * (b[0] - a[0]), ES(v, 0), col)
+                else:
+                    flecha(a, b, rads[j - 1], "#95a5a6", 0.6, ":", ps=nodos[i - 1, t], pb=nodos[i, t], z=1)
+    filas_inv = [f"Inventario etapa {i}" for i in range(1, M)] + ["Inv. prod. terminado (I+)"]
+    for i in range(1, M + 1):                                   # inventarios: flechas horizontales
+        for t in range(1, T):
+            v = float(inv.loc[filas_inv[i - 1], f"T{t}"]); a, b = pos(i, t), pos(i, t + 1)
+            col = "#27ae60" if i == M else "#7f8c8d"
+            if v > 1e-9:
+                flecha(a, b, 0.0, col, 2.0, ps=nodos[i, t], pb=nodos[i, t + 1], z=2)
+                etiqueta_((a[0] + b[0]) / 2, a[1] + 0.55, ES(v, 0), col)
+            else:
+                flecha(a, b, 0.0, "#bdc3c7", 0.7, "--", ps=nodos[i, t], pb=nodos[i, t + 1], z=1)
+    for t in range(1, T):                                       # demanda pendiente (rojo)
+        v = float(inv.loc["Demanda pendiente (I-)", f"T{t}"])
+        if v > 1e-9:
+            a, b = pos(M, t), pos(M, t + 1)
+            flecha(a, b, -0.55, "#e74c3c", 1.8, "--", ps=nodos[M, t], pb=nodos[M, t + 1], z=2)
+            etiqueta_((a[0] + b[0]) / 2, a[1] - 1.05, ES(v, 0), "#e74c3c")
+    for i in range(1, M + 1):                                   # inventario al final del horizonte
+        a = pos(i, T); b = (a[0] + 2.6, a[1])
+        v = float(inv.loc[filas_inv[i - 1], f"T{T}"])
+        flecha(a, b, 0.0, "#27ae60" if i == M else "#7f8c8d", 1.4, ps=nodos[i, T])
+        etiqueta_((a[0] + b[0]) / 2 + 0.2, a[1] + 0.5, ES(v, 0), "#27ae60" if i == M else "#7f8c8d")
+    a = pos(M, 1); b = (a[0] - 2.6, a[1])                       # inventario inicial
+    flecha(b, a, 0.0, "#27ae60", 1.4, pb=nodos[M, 1])
+    etiqueta_((a[0] + b[0]) / 2 - 0.2, a[1] + 0.5, ES(d.inv_ini[p], 0), "#27ae60")
+    for t in range(1, T + 1):                                   # demanda
+        a = pos(M, t); b = (a[0], a[1] - 2.3)
+        flecha(a, b, 0.0, "#2c3e50", 1.6, ps=nodos[M, t])
+        ax.text(b[0], b[1] - 0.15, f"Demanda T{t}\n{ES(d.demanda[(p, t)], 0)}", ha="center", va="top", fontsize=8,
+                fontweight="bold", bbox=dict(boxstyle="round,pad=0.3", fc="#ecf0f1", ec="#2c3e50"), color="#2c3e50")
+    h = [Line2D([0], [0], color=GR_COLORES[(j - 1) % len(GR_COLORES)], lw=3, label=f"Fuente {j}")
+         for j in range(1, max(d.J) + 1)]
+    h += [Line2D([0], [0], color="#7f8c8d", lw=2, label="Inventario entre períodos"),
+          Line2D([0], [0], color="#27ae60", lw=2, label="Producto terminado en bodega"),
+          Line2D([0], [0], color="#e74c3c", lw=2, ls="--", label="Demanda pendiente"),
+          Line2D([0], [0], color="#95a5a6", lw=1, ls=":", label="Sin flujo (0)")]
+    fig.legend(handles=h, loc="lower center", ncol=min(len(h), 6), fontsize=8, frameon=False)
+    fig.suptitle(f"Grafo de la solución · {nombre}" + (f" · {etiqueta}" if etiqueta else ""), fontweight="bold")
+    fig.tight_layout(rect=(0, 0.05, 1, 0.97))
+    return fig
+
+
+TEXTO_GRAFO = ("Cada fila de círculos es una etapa y cada círculo un período (T1, T2, ...). Las flechas que bajan son producción: "
+               "cada color es una fuente (máquina) y el número indica las unidades que fabrica en ese período; cuanto más gruesa, "
+               "más produce. Las flechas horizontales son inventario que pasa al período siguiente (verde en la última etapa = producto "
+               "terminado en bodega). Las flechas a la derecha son el inventario al final del plan, y debajo de cada período aparece la demanda.")
+
+
+# ───────── exportar a Excel
+def construir_excel(Rs, d, ruta):
+    import io
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+    from openpyxl.formatting.rule import ColorScaleRule
+    from openpyxl.drawing.image import Image as XLImage
+
+    P, M, T = len(d.productos), len(d.J), d.T
+    src = [(i, j) for i in range(1, M + 1) for j in range(1, d.J[i - 1] + 1)]
+    cT = [f"T{t}" for t in range(1, T + 1)]
+    borde = Side(style="thin", color="BDC3C7"); BORDE = Border(left=borde, right=borde, top=borde, bottom=borde)
+    fill = lambda c: PatternFill("solid", fgColor=c.lstrip("#"))
+    blanco = Font(bold=True, color="FFFFFF")
+    nombres = {"ent": "entera", "cont": "continua"}
+    wb = Workbook(); wb.remove(wb.active)
+
+    def titulo(ws, txt, color, ancho=8):
+        ws["A1"] = txt; ws["A1"].font = Font(size=16, bold=True, color="FFFFFF"); ws["A1"].fill = fill(color)
+        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=max(ancho, 2))
+        ws.row_dimensions[1].height = 28; ws["A1"].alignment = Alignment(vertical="center")
+
+    def nota(ws, fila, txt, ancho=8, alto=62):
+        ws.cell(fila, 1, txt).alignment = Alignment(wrap_text=True, vertical="top")
+        ws.merge_cells(start_row=fila, start_column=1, end_row=fila, end_column=max(ancho, 2))
+        ws.row_dimensions[fila].height = alto; ws.cell(fila, 1).fill = fill("#F4F6F7")
+
+    def fmt(v):
+        return "#,##0" if abs(float(v) - round(float(v))) < 1e-6 else "#,##0.00"
+
+    def volcar(ws, fila, txt, df, color, col0=1):
+        ws.cell(fila, col0, txt).font = Font(bold=True, size=12, color=color.lstrip("#"))
+        fila += 1
+        for c, h in enumerate(df.columns):
+            x = ws.cell(fila, col0 + c, str(h)); x.font = blanco; x.fill = fill(color); x.border = BORDE
+            x.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        for r, row in enumerate(df.itertuples(index=False), 1):
+            for c, v in enumerate(row):
+                if isinstance(v, (float, np.floating)) and abs(v - round(v)) < 1e-6: v = int(round(v))
+                x = ws.cell(fila + r, col0 + c, v); x.border = BORDE
+                if isinstance(v, (int, float, np.integer, np.floating)) and not isinstance(v, bool):
+                    x.number_format = fmt(v); x.alignment = Alignment(horizontal="right")
+                if r % 2 == 0: x.fill = fill("#F8F9F9")
+        return fila + len(df) + 2
+
+    def anchos(ws, base=14, primera=30):
+        ws.column_dimensions["A"].width = primera
+        for c in range(2, 40): ws.column_dimensions[get_column_letter(c)].width = base
+
+    # ---------- Resumen
+    ws = wb.create_sheet("Resumen"); ws.sheet_properties.tabColor = "27AE60"
+    titulo(ws, "Planeación agregada · Resumen de la solución", "#27ae60", 5)
+    ks = list(Rs.keys()); cab = ["Concepto"] + [f"Versión {nombres[k]}" for k in ks] + (["Diferencia (entera − continua)"] if len(ks) == 2 else [])
+    filas = [("Estado", [Rs[k]["estado"] for k in ks], False), ("Tiempo de cálculo (s)", [round(Rs[k]["seg"], 2) for k in ks], False),
+             ("Costo total (función objetivo)", [Rs[k]["obj"] for k in ks], True),
+             ("Costo de producción", [Rs[k]["costos"]["prod"] for k in ks], True),
+             ("Costo de preparación (setup)", [Rs[k]["costos"]["setup"] for k in ks], True),
+             ("Costo de mantener inventario", [Rs[k]["costos"]["mant"] for k in ks], True),
+             ("Costo de escasez", [Rs[k]["costos"]["falt"] for k in ks], True)]
+    for c, h in enumerate(cab, 1):
+        x = ws.cell(3, c, h); x.font = blanco; x.fill = fill("#27ae60"); x.border = BORDE
+        x.alignment = Alignment(horizontal="center", wrap_text=True)
+    for r, (n, vals, num) in enumerate(filas, 4):
+        ws.cell(r, 1, n).font = Font(bold=True); ws.cell(r, 1).border = BORDE
+        for c, v in enumerate(vals, 2):
+            x = ws.cell(r, c, v); x.border = BORDE
+            if num: x.number_format = "#,##0.00"
+        if len(ks) == 2:
+            x = ws.cell(r, 4, f"=B{r}-C{r}" if num else ""); x.border = BORDE; x.number_format = "#,##0.00"
+        if r == 6:
+            for c in range(1, len(cab) + 1): ws.cell(r, c).font = Font(bold=True, color="27AE60", size=12)
+    nota(ws, 12, "La versión continua permite decimales y usa capacidades exactas (límite teórico). La versión entera produce unidades "
+                 "enteras y redondea la capacidad hacia abajo (lo que se puede hacer en la práctica); nunca cuesta menos que la continua.",
+         5, 50)
+    anchos(ws, 24, 34)
+
+    # ---------- Parámetros
+    ws = wb.create_sheet("Parámetros"); ws.sheet_properties.tabColor = "2980B9"
+    titulo(ws, "Datos de entrada del problema", "#2980b9", 9)
+    f = 3
+    f = volcar(ws, f, "Datos generales", pd.DataFrame({"Parámetro": ["Productos", "Etapas", "Fuentes por etapa", "Períodos",
+                "Meses por período", "Factor de eficiencia", "Escasez permitida"],
+                "Valor": [", ".join(d.productos), M, ", ".join(map(str, d.J)), T, d.meses, d.efic, "Sí" if d.faltantes else "No"]}), "#2980b9")
+    f = volcar(ws, f, "Demanda e inventarios", pd.DataFrame(
+        [[n, d.inv_ini[p], d.inv_fin[p], d.c_falt[p]] + [d.demanda[(p, t)] for t in range(1, T + 1)] for p, n in enumerate(d.productos)],
+        columns=["Producto", "Inv. inicial", "Inv. final", "Costo escasez/u"] + [f"Demanda {c}" for c in cT]), "#2980b9")
+    f = volcar(ws, f, "Días hábiles por período", pd.DataFrame([d.dias], columns=cT), "#16a085")
+    f = volcar(ws, f, "Fuentes y horas disponibles (N · eficiencia · (días · turnos · h/turno − pérdida · meses))", pd.DataFrame(
+        [[f"Etapa {i} · Fuente {j}", d.fuente[(i, j)]["N"], d.fuente[(i, j)]["perd"], d.fuente[(i, j)]["turnos"], d.fuente[(i, j)]["horas"]]
+         + [round(horas(d, i, j, t), 2) for t in range(1, T + 1)] for i, j in src],
+        columns=["Fuente", "Nº máquinas", "Pérdida mant. (h/mes/máq)", "Turnos", "Horas/turno"] + [f"Horas {c}" for c in cT]), "#16a085")
+    f = volcar(ws, f, "Tasas, preparación y capacidad en unidades (horas × tasa)", pd.DataFrame(
+        [[n, f"Etapa {i} · Fuente {j}", d.tasa[(p, i, j)], d.setup[(p, i, j)]]
+         + [round(horas(d, i, j, t) * d.tasa[(p, i, j)], 1) for t in range(1, T + 1)]
+         for p, n in enumerate(d.productos) for i, j in src],
+        columns=["Producto", "Fuente", "Tasa (u/h)", "Costo preparación"] + [f"Capacidad {c}" for c in cT]), "#e67e22")
+    f = volcar(ws, f, "Costo unitario de producción", pd.DataFrame(
+        [[n, f"Etapa {i} · Fuente {j}"] + [d.costo[(p, i, j, t)] for t in range(1, T + 1)]
+         for p, n in enumerate(d.productos) for i, j in src], columns=["Producto", "Fuente"] + cT), "#8e44ad")
+    f = volcar(ws, f, "Inventarios entre etapas", pd.DataFrame(
+        [[n, f"Etapa {i}", d.mantener[(p, i)], d.coef[(p, i)]] for p, n in enumerate(d.productos) for i in range(1, M + 1)],
+        columns=["Producto", "Etapa", "Costo de mantener", "Consumo por unidad"]), "#d4ac0d")
+    anchos(ws, 16, 34)
+
+    # ---------- por versión
+    for k, R in Rs.items():
+        nm = nombres[k]; col = "#2980b9" if k == "ent" else "#16a085"
+        # Solución
+        ws = wb.create_sheet(f"Solución {nm}"); ws.sheet_properties.tabColor = col.lstrip("#")
+        enc = ["Variable", "Valor solución", "Costo unitario", "Contribución total", "Costo reducido", "Estado base"]
+        for c, h in enumerate(enc, 1):
+            x = ws.cell(1, c, h); x.font = blanco; x.fill = fill(col); x.border = BORDE
+            x.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        tint = {"X": "#D6EAF8", "I": "#E8DAEF", "Y": "#FDEBD0"}
+        for r, row in enumerate(R["tabla"].itertuples(index=False), 2):
+            ws.cell(r, 1, row[0]).fill = fill(tint.get(row[0][0], "#FFFFFF"))
+            ws.cell(r, 2, float(row[1])); ws.cell(r, 3, float(row[2])); ws.cell(r, 4, f"=B{r}*C{r}")
+            if row[4] == row[4]: ws.cell(r, 5, float(row[4]))
+            ws.cell(r, 6, row[5])
+            for c in range(1, 7): ws.cell(r, c).border = BORDE
+            for c in (2, 3, 4, 5): ws.cell(r, c).number_format = "#,##0.00"
+            if abs(row[1]) < 1e-9:
+                for c in range(1, 7): ws.cell(r, c).font = Font(color="95A5A6")
+        n = len(R["tabla"]) + 1
+        ws.cell(n + 1, 1, "FUNCIÓN OBJETIVO (suma de contribuciones)").font = Font(bold=True)
+        ws.cell(n + 1, 4, f"=SUM(D2:D{n})").number_format = "#,##0.00"; ws.cell(n + 1, 4).font = Font(bold=True, color="27AE60", size=12)
+        ws.freeze_panes = "B2"; ws.auto_filter.ref = f"A1:F{n}"
+        for c, w in zip("ABCDEF", (18, 16, 16, 20, 16, 16)): ws.column_dimensions[c].width = w
+        ws.column_dimensions["H"].width = 70
+        ws["H1"] = "Cómo leer"; ws["H1"].font = Font(bold=True)
+        ws["H2"] = ("X123 = producción en etapa 1, fuente 2, período 3 · Y123 = 1 si esa fuente se prepara · I12 = inventario de la "
+                    "etapa 1 al final del período 2 · I+ = producto terminado en bodega · I- = demanda pendiente. "
+                    "Colores: azul = X, morado = I, naranja = Y.")
+        ws["H2"].alignment = Alignment(wrap_text=True, vertical="top"); ws.row_dimensions[2].height = 90
+
+        # Plan
+        ws = wb.create_sheet(f"Plan {nm}"); ws.sheet_properties.tabColor = col.lstrip("#")
+        titulo(ws, f"Plan de producción e inventarios · versión {nm}", col, T + 2)
+        f = 3
+        for nombre in d.productos:
+            dfp = R["plan"][nombre].reset_index().rename(columns={"index": "Fuente"})
+            f0 = f; f = volcar(ws, f, f"{nombre} · Producción por fuente (unidades)", dfp, "#2980b9")
+            ws.conditional_formatting.add(f"B{f0+2}:{get_column_letter(T+1)}{f0+1+len(dfp)}",
+                                          ColorScaleRule(start_type="min", start_color="FFFFFF", end_type="max", end_color="5DADE2"))
+            dfi = R["inv"][nombre].reset_index().rename(columns={"index": ""})
+            f0 = f; f = volcar(ws, f, f"{nombre} · Inventarios y cumplimiento de demanda", dfi, "#8e44ad")
+            ws.conditional_formatting.add(f"B{f0+2}:{get_column_letter(T+1)}{f0+1+len(dfi)}",
+                                          ColorScaleRule(start_type="min", start_color="FFFFFF", end_type="max", end_color="BB8FCE"))
+        anchos(ws, 15, 34)
+
+        # Utilización
+        ws = wb.create_sheet(f"Utilización {nm}"); ws.sheet_properties.tabColor = "E67E22"
+        titulo(ws, f"Utilización de la capacidad · versión {nm}", "#e67e22", T + 1)
+        U = R["util"].reset_index().rename(columns={"index": "Fuente"})
+        volcar(ws, 3, "Horas usadas / horas disponibles", U, "#e67e22")
+        for r in range(5, 5 + len(U)):
+            for c in range(2, T + 2): ws.cell(r, c).number_format = "0%"
+        ws.conditional_formatting.add(f"B5:{get_column_letter(T+1)}{4+len(U)}",
+                                      ColorScaleRule(start_type="num", start_value=0, start_color="63BE7B", mid_type="num", mid_value=0.5,
+                                                     mid_color="FFEB84", end_type="num", end_value=1, end_color="F8696B"))
+        anchos(ws, 12, 18)
+
+        # Grafo
+        ws = wb.create_sheet(f"Grafo {nm}"); ws.sheet_properties.tabColor = "8E44AD"
+        titulo(ws, f"Grafo de la solución · versión {nm}", "#8e44ad", 20)
+        nota(ws, 2, TEXTO_GRAFO, 20, 62)
+        fila = 4
+        for nombre in d.productos:
+            fig = figura_grafo(R, d, nombre, f"versión {nm}")
+            buf = io.BytesIO(); fig.savefig(buf, format="png", dpi=110); plt.close(fig); buf.seek(0)
+            img = XLImage(buf); esc = min(1.0, 1500 / img.width); img.width, img.height = img.width * esc, img.height * esc
+            ws.add_image(img, f"A{fila}"); fila += int(img.height / 20) + 3
+    wb.save(ruta)
+
+
 def exportar(_=None):
-    R = S["R"]
-    if not R: aviso("Primero resuelve el modelo."); return
+    Rs = S.get("Rs")
+    if not Rs: aviso("Primero hay que resolver el modelo."); return
     ruta = "plan_agregado.xlsx"
-    with pd.ExcelWriter(ruta) as xw:
-        pd.DataFrame({"Concepto": ["Estado", "Costo total", *R["costos"].keys()],
-                      "Valor": [R["estado"], R["obj"], *R["costos"].values()]}).to_excel(xw, sheet_name="Resumen", index=False)
-        R["tabla"].to_excel(xw, sheet_name="Solucion", index=False)
-        for k, (n, df) in enumerate(R["plan"].items()):
-            df.to_excel(xw, sheet_name=f"Plan {k+1}"); R["inv"][n].to_excel(xw, sheet_name=f"Inventarios {k+1}")
-        R["util"].to_excel(xw, sheet_name="Utilizacion")
+    try:
+        construir_excel(Rs, S["d"], ruta)
+    except Exception as e:
+        aviso(f"No se pudo crear el Excel: {e}"); return
     try:
         from google.colab import files; files.download(ruta)
     except Exception:
         aviso(f"Archivo guardado como {ruta}", "#27ae60")
+
 
 
 b_gen.on_click(generar_tablas); b_ej.on_click(cargar_ejemplo)
@@ -779,10 +1056,10 @@ def _paso(n, titulo, texto, color):
 
 
 PASOS = ("<div style='display:flex;gap:12px;flex-wrap:wrap;max-width:1000px;margin:8px 0'>"
-         + _paso("1", "Define la estructura", "Productos, etapas, fuentes y períodos (abajo).", COL_T["dem"])
-         + _paso("2", "Genera las tablas", "Pulsa el botón azul. Si solo quieres probar, carga el caso del artículo.", COL_T["cap"])
-         + _paso("3", "Edita los datos", "5 pestañas con colores. Cada una explica sus columnas.", COL_T["tasa"])
-         + _paso("4", "Resuelve", "Pulsa RESOLVER y revisa las pestañas de resultados.", "#27ae60") + "</div>")
+         + _paso("1", "Definir la estructura", "Productos, etapas, fuentes y períodos (abajo).", COL_T["dem"])
+         + _paso("2", "Generar las tablas", "Pulsar el botón azul. Para probar, cargar el caso del artículo.", COL_T["cap"])
+         + _paso("3", "Editar los datos", "5 pestañas con colores. Cada una explica sus columnas.", COL_T["tasa"])
+         + _paso("4", "Resolver", "Pulsar RESOLVER y revisar las pestañas de resultados.", "#27ae60") + "</div>")
 
 GLOSARIO = """
 <dl style='max-width:1000px;line-height:1.5'>
@@ -799,35 +1076,35 @@ GLOSARIO = """
 </dl>"""
 
 acc = W.Accordion(children=[W.HTML(GLOSARIO)])
-acc.set_title(0, "📖 Glosario: ¿qué significa cada palabra?")
+acc.set_title(0, "Glosario: ¿qué significa cada palabra?")
 try: acc.selected_index = None
 except Exception: pass
 
 ui = W.VBox([
-    W.HTML(CSS_UI + "<h2>🏭 Planeación agregada · multietapa · multifuente · multiproducto</h2>"
+    W.HTML(CSS_UI + "<h2>Planeación agregada · multietapa · multifuente · multiproducto</h2>"
            "<p style='opacity:.85;max-width:1000px'>Esta herramienta calcula <b>cuánto producir, dónde y cuándo</b> para cumplir la "
            "demanda al <b>menor costo posible</b>, respetando la capacidad de las máquinas (modelo MILP de Kalenatic, López y González)."
            "</p>"),
-    W.HTML("<div style='font-size:18px;font-weight:800'>🧭 ¿Cómo se usa?</div>"), W.HTML(PASOS), acc,
-    W.HTML("<div style='font-size:18px;font-weight:800;margin-top:14px'>🧱 Paso 1 · Define la estructura</div>"
-           "<div style='opacity:.85'>Escribe los datos generales. A la derecha de cada campo dice qué poner.</div>"),
+    W.HTML("<div style='font-size:18px;font-weight:800'>¿Cómo se usa?</div>"), W.HTML(PASOS), acc,
+    W.HTML("<div style='font-size:18px;font-weight:800;margin-top:14px'>Paso 1 · Definir la estructura</div>"
+           "<div style='opacity:.85'>Datos generales del problema. A la derecha de cada campo aparece qué escribir.</div>"),
     _form([
         ("Productos", w_prod, "Nombres separados por coma. Ej: <i>Camisa, Pantalón</i> = 2 productos."),
         ("Fuentes por etapa", w_J, "Un número por etapa, separado por comas. <i>3,2,3,4</i> = 4 etapas: la 1 tiene 3 fuentes, la 2 tiene 2, la 3 tiene 3 y la 4 tiene 4."),
         ("Nº de períodos", w_T, "Cuántos períodos tiene el plan. Ej: 4 trimestres."),
         ("Meses por período", w_meses, "Duración de cada período en meses (trimestre = 3). Se usa para descontar el mantenimiento."),
         ("Factor de eficiencia", w_efic, "Fracción del tiempo que la máquina realmente produce. 0,8 = 80 % (es el valor del artículo)."),
-        ("Escasez", w_falt, "Si lo desmarcas, el modelo debe cumplir toda la demanda. Si no alcanza la capacidad, dirá INFACTIBLE."),
-        ("Resolver", w_modo, "<b>Ambas</b> calcula las dos versiones y las compara. Entera = práctica; Continua = límite teórico."),
-        ("Tiempo máximo (s)", w_tl, "Segundos máximos que el programa piensa por versión. Sube si el problema es grande."),
-        ("Gap tolerado (%)", w_gap, "0 = exige el óptimo exacto. 1 = acepta un plan a menos de 1 % del mejor posible (más rápido)."),
+        ("Escasez", w_falt, "Al desmarcar, el modelo debe cumplir toda la demanda. Si la capacidad no alcanza, el resultado es INFACTIBLE."),
+        ("Resolver", w_modo, "<b>Ambas</b>: calcular las dos versiones y compararlas. Entera = práctica; Continua = límite teórico."),
+        ("Tiempo máximo (s)", w_tl, "Segundos máximos de cálculo por versión. Subir si el problema es grande."),
+        ("Gap tolerado (%)", w_gap, "0 = exigir el óptimo exacto. 1 = aceptar un plan a menos de 1 % del mejor posible (más rápido)."),
     ]),
     W.HTML("<div style='height:8px'></div>"), w_vista,
-    W.HTML("<div style='font-size:18px;font-weight:800;margin-top:14px'>🔨 Paso 2 · Genera las tablas</div>"
-           "<div style='opacity:.85;max-width:1000px'>Cada vez que cambies productos, etapas, fuentes o períodos, vuelve a pulsar "
-           "<b>Generar tablas</b> (los datos que hayas escrito se reemplazan por valores de ejemplo).</div>"),
+    W.HTML("<div style='font-size:18px;font-weight:800;margin-top:14px'>Paso 2 · Generar las tablas</div>"
+           "<div style='opacity:.85;max-width:1000px'>Al cambiar productos, etapas, fuentes o períodos hay que volver a pulsar "
+           "<b>Generar tablas</b> (los datos escritos se reemplazan por valores de ejemplo).</div>"),
     W.HBox([b_gen, b_ej], layout=W.Layout(gap="12px", margin="6px 0")), msg, caja_tablas,
-    W.HTML("<div style='font-size:18px;font-weight:800;margin-top:16px'>🚀 Paso 4 · Resuelve y revisa los resultados</div>"),
+    W.HTML("<div style='font-size:18px;font-weight:800;margin-top:16px'>Paso 4 · Resolver y revisar los resultados</div>"),
     W.HBox([b_res, b_xls], layout=W.Layout(gap="12px", margin="6px 0")), w_ver, res_tabs])
 display(ui)
 actualizar_vista()
