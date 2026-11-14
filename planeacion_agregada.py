@@ -1109,3 +1109,115 @@ ui = W.VBox([
 display(ui)
 actualizar_vista()
 generar_tablas()
+
+# %%
+# ╔══════════════════════════════════════════════════════════════════════╗
+# ║  CELDA 3 · VALIDACIÓN Y RESULTADOS DEL CASO DEL ARTÍCULO              ║
+# ║  (se calcula automáticamente; no depende de lo escrito en la interfaz) ║
+# ╚══════════════════════════════════════════════════════════════════════╝
+d_art = datos_articulo()
+R_e = resolver(replace(d_art, enteras=True, t_limite=120))
+R_c = resolver(replace(d_art, enteras=False, t_limite=120))
+M_, T_ = len(d_art.J), d_art.T
+fuentes_ = [(i, j) for i in range(1, M_ + 1) for j in range(1, d_art.J[i - 1] + 1)]
+cT_ = [f"T{t}" for t in range(1, T_ + 1)]
+
+# ---------- 1) Datos de entrada del caso
+df_dem = pd.DataFrame([[ES(d_art.inv_ini[0], 0), ES(d_art.inv_fin[0], 0), ES(d_art.c_falt[0], 0)]
+                       + [ES(d_art.demanda[(0, t)], 0) for t in range(1, T_ + 1)]],
+                      columns=["Inv. inicial", "Inv. final", "Costo escasez"] + [f"Demanda {c}" for c in cT_])
+display(HTML(seccion("Datos del caso · demanda e inventarios (unidades)", PAL["prod"], tabla_html(df_dem, 120, 0, PAL["prod"]))))
+df_cap = pd.DataFrame(
+    [[f"Etapa {i} · Fuente {j}", ES(d_art.fuente[(i, j)]["N"], 0), ES(d_art.fuente[(i, j)]["perd"], 1),
+      ES(d_art.tasa[(0, i, j)], 0), ES(d_art.setup[(0, i, j)], 0)]
+     + [ES(horas(d_art, i, j, t) * d_art.tasa[(0, i, j)], 1) for t in range(1, T_ + 1)] for i, j in fuentes_],
+    columns=["Fuente", "Máquinas", "Pérdida mant. (h/mes)", "Tasa (u/h)", "Costo setup"] + [f"Capacidad {c}" for c in cT_])
+display(HTML(seccion("Datos del caso · capacidad por fuente (unidades por período)", COL_T["cap"], tabla_html(df_cap, 420, 0, COL_T["cap"]))))
+df_cu = pd.DataFrame([[f"Etapa {i} · Fuente {j}"] + [ES(d_art.costo[(0, i, j, t)], 0) for t in range(1, T_ + 1)] for i, j in fuentes_],
+                     columns=["Fuente"] + cT_)
+cuerpo = tabla_html(df_cu, 380, 0, COL_T["costo"]) + (
+    "<p style='margin-top:8px'>Costo de mantener inventario por unidad y período: "
+    + ", ".join(f"etapa {i}: {ES(d_art.mantener[(0, i)], 0)}" for i in range(1, M_ + 1)) + ".</p>")
+display(HTML(seccion("Datos del caso · costo unitario de producción ($ por unidad)", COL_T["costo"], cuerpo)))
+
+# ---------- 2) Verificación de la solución impresa en el artículo (Tabla IV del paper)
+x_art = {(1, 1, 1): 39952, (1, 2, 1): 50510, (1, 3, 1): 27726, (1, 1, 2): 40592, (1, 1, 3): 45712, (1, 2, 3): 45556,
+         (1, 1, 4): 39952, (2, 1, 1): 118188, (2, 1, 3): 131860, (2, 1, 4): 39952, (3, 1, 1): 39952, (3, 3, 1): 78236,
+         (3, 1, 3): 45712, (3, 2, 3): 63896, (3, 1, 4): 39952, (3, 2, 4): 22252, (4, 1, 1): 28713, (4, 2, 1): 40192,
+         (4, 3, 1): 49283, (4, 1, 3): 32860, (4, 2, 3): 45952, (4, 3, 4): 56571, (4, 4, 4): 36429}
+inv_art = {(1, 2): 40592, (2, 3): 22252, (3, 3): 30796}          # (etapa, período): inventario intermedio
+ip_art = [68688, 3188, 0, 1000]                                    # producto terminado al final de cada período
+c_prod_art = sum(v * d_art.costo[(0, i, j, t)] for (i, j, t), v in x_art.items())
+c_setup_art = sum(d_art.setup[(0, i, j)] for (i, j, t) in x_art)
+c_mant_art = (sum(v * d_art.mantener[(0, i)] for (i, t), v in inv_art.items()) + sum(ip_art) * d_art.mantener[(0, M_)])
+total_art = c_prod_art + c_setup_art + c_mant_art
+
+filas = [["Costo reportado en el texto del artículo", 34208760.0, 34208760.0 - 34208760.0],
+         ["Costo recalculado con las variables impresas en el artículo", total_art, total_art - 34208760.0],
+         ["Modelo con aproximaciones (X entera) · este trabajo", R_e["obj"], R_e["obj"] - 34208760.0],
+         ["Modelo sin aproximaciones (X continua) · este trabajo", R_c["obj"], R_c["obj"] - 34208760.0]]
+df_val = pd.DataFrame(filas, columns=["Fuente del valor", "Costo total ($)", "Diferencia vs. artículo ($)"])
+nota_val = ("<p style='margin-top:8px'>Las variables que imprime el propio artículo, evaluadas con sus costos, dan "
+            f"$ {ES(total_art, 0)}: la diferencia de unos pesos con el valor reportado proviene del redondeo de esas variables "
+            "(por ejemplo, la capacidad exacta de X411 es 28.713,6 y el artículo imprime 28.713). El plan encontrado aquí "
+            "difiere en algunas variables, pero tiene el mismo costo: es un óptimo alternativo.</p>")
+display(HTML(seccion("Validación frente al artículo", PAL["total"], tabla_html(df_val, 300, 2, PAL["total"]) + nota_val)))
+
+# ---------- 3) Desglose de costos
+tot_e, tot_c = R_e["obj"], R_c["obj"]
+nom_ = {"prod": "Producción", "setup": "Preparación (setup)", "mant": "Mantener inventario", "falt": "Escasez"}
+df_cos = pd.DataFrame([[nom_[k], R_e["costos"][k], 100 * R_e["costos"][k] / tot_e, R_c["costos"][k], 100 * R_c["costos"][k] / tot_c]
+                       for k in nom_] + [["Total", tot_e, 100.0, tot_c, 100.0]],
+                      columns=["Componente", "Entera ($)", "Entera (%)", "Continua ($)", "Continua (%)"])
+display(HTML(seccion("Desglose del costo total", PAL["setup"], tabla_html(df_cos, 300, 2, PAL["setup"]))))
+
+# ---------- 4) Plan, tabla solución y grafo (versión entera)
+for nombre in d_art.productos:
+    df = R_e["plan"][nombre].reset_index().rename(columns={"index": "Fuente"})
+    display(HTML(seccion("Plan de producción por fuente · versión entera (unidades)", PAL["prod"], tabla_html(df, 380, 0, PAL["prod"], calor=True))))
+    df = R_e["inv"][nombre].reset_index().rename(columns={"index": ""})
+    display(HTML(seccion("Inventarios y cumplimiento de la demanda · versión entera", PAL["mant"], tabla_html(df, 380, 0, PAL["mant"], calor=True))))
+    fig = figura_grafo(R_e, d_art, nombre, "caso del artículo, versión entera"); plt.show()
+t_nz = R_e["tabla"][R_e["tabla"]["Valor solución"].abs() > 1e-9]
+display(HTML(seccion(f"Tabla solución · variables con valor distinto de cero ({len(t_nz)} de {len(R_e['tabla'])})", PAL["gris"],
+                     tabla_html(t_nz, 420, 2, PAL["gris"], fila_color=lambda r: TIPO_COLOR.get(r["Variable"][0], PAL["gris"])))))
+
+# ---------- 5) Lectura de los resultados (se calcula con los datos)
+prod_fin = R_e["inv"]["Producto"].loc[f"Producción etapa {M_}"]
+sin_prod = [c for c in prod_fin.index if prod_fin[c] < 1e-6]
+n_setup = int((R_e["tabla"]["Variable"].str.startswith("Y") & (R_e["tabla"]["Valor solución"] > 0.5)).sum())
+n_posible = len(fuentes_) * T_
+esc = R_e["costos"]["falt"]
+lect = (f"<ul style='margin:4px 0 4px 18px'>"
+        f"<li>Se activan <b>{n_setup} preparaciones</b> de {n_posible} posibles ({len(fuentes_)} fuentes × {T_} períodos): "
+        f"el modelo evita arrancar fuentes que no necesita.</li>"
+        f"<li>La última etapa {'no produce en ' + ', '.join(sin_prod) if sin_prod else 'produce en todos los períodos'}: "
+        f"se adelanta producción y se paga inventario a cambio de ahorrar preparaciones.</li>"
+        f"<li>El costo de escasez es <b>$ {ES(esc, 0)}</b>"
+        f"{': toda la demanda se cumple a tiempo.' if esc < 1e-6 else ': parte de la demanda se entrega tarde.'}</li>"
+        f"<li>La versión continua cuesta $ {ES(tot_e - tot_c, 2)} menos que la entera ({ES(100 * (tot_e - tot_c) / tot_c, 6)} %): "
+        f"el efecto de exigir unidades enteras y capacidades redondeadas hacia abajo es mínimo.</li></ul>")
+display(HTML(caja("Lectura de los resultados", PAL["total"], lect)))
+
+# ---------- 6) Análisis de escenarios (versión continua, resolución rápida)
+def _escala(dic, f): return {k: v * f for k, v in dic.items()}
+
+esc_def = [("Caso base", d_art),
+           ("Demanda +10 %", replace(d_art, demanda=_escala(d_art.demanda, 1.10))),
+           ("Demanda +20 %", replace(d_art, demanda=_escala(d_art.demanda, 1.20))),
+           ("Costos de preparación × 2", replace(d_art, setup=_escala(d_art.setup, 2.0))),
+           ("Costo de mantener × 2", replace(d_art, mantener=_escala(d_art.mantener, 2.0))),
+           ("Días hábiles − 20 %", replace(d_art, dias=[x * 0.8 for x in d_art.dias])),
+           ("Inventario final igual a 0", replace(d_art, inv_fin=[0.0]))]
+filas, base = [], None
+for nombre_, dd in esc_def:
+    r = resolver(replace(dd, enteras=False, t_limite=60))
+    if not r["ok"]:
+        filas.append([nombre_, "Infactible", "—", "—", "—", "—"]); continue
+    base = r["obj"] if base is None else base
+    filas.append([nombre_, ES(r["obj"], 0), ES(r["obj"] - base, 0), ES(100 * (r["obj"] - base) / base, 2) + " %",
+                  ES(r["costos"]["setup"], 0), ES(r["costos"]["falt"], 0)])
+df_esc = pd.DataFrame(filas, columns=["Escenario", "Costo total ($)", "Variación ($)", "Variación (%)", "Setup ($)", "Escasez ($)"])
+display(HTML(seccion("Análisis de escenarios (X continua)", PAL["mant"], tabla_html(df_esc, 360, 0, PAL["mant"]) +
+    "<p style='margin-top:8px'>Cada fila modifica un solo dato del caso base y recalcula el plan óptimo. "
+    "Sirve para ver qué tan sensible es el costo a la demanda, a los costos fijos y a la capacidad.</p>")))
